@@ -6,4 +6,6 @@ matplotlib
 pyswarms
 seaborn
 yfinance
+openpyxl
 tensorflow
+
