@@ -8,6 +8,14 @@ Original file is located at
 """
 
 # app.py
+import random
+import numpy as np
+import tensorflow as tf
+
+random.seed(42)
+np.random.seed(42)
+tf.random.set_seed(42)
+
 import streamlit as st
 import numpy as np
 import pandas as pd
