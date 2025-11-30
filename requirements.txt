@@ -2,6 +2,8 @@ streamlit
 pandas
 numpy
 scikit-learn
-tensorflow
 matplotlib
 pyswarms
+seaborn
+yfinance
+tensorflow
