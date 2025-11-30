@@ -27,4 +27,4 @@ A web application for stock price prediction using LSTM neural networks optimize
 Deployed on Streamlit Cloud: [Your App Link]
 
 ---
-*Created by [Your Name]*
+*Created by Luna Citra Alifa*
