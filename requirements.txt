@@ -1,10 +1,10 @@
-tensorflow==2.19.0
-numpy==2.0.2
-pandas==2.2.2
-scikit-learn==1.5.2
+tensorflow==2.13.0
+numpy==1.24.3
+pandas==1.5.3
+scikit-learn==1.2.2
 matplotlib==3.7.1
-seaborn==0.13.2
-yfinance==0.2.66
+seaborn==0.12.2
+yfinance==0.2.18
 pyswarms==1.3.0
+streamlit==1.28.0
 openpyxl==3.1.2
-streamlit==1.36.0
