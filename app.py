@@ -162,14 +162,15 @@ def main():
             st.subheader("Data Preview")
             st.dataframe(df.head(), width='stretch')
 
-            # Plot original data
-            fig, ax = plt.subplots(figsize=(10, 4))
+            # ✅ PERBAIKAN: UKURAN PLOT LEBIH KECIL
+            fig, ax = plt.subplots(figsize=(8, 3))  # DARI (10,4) JADI (8,3)
             ax.plot(df.index, df['Close'], label='Close Price', linewidth=1)
             ax.set_title("Stock Price Time Series")
             ax.set_xlabel("Date")
             ax.set_ylabel("Price")
             ax.legend()
             ax.grid(True, alpha=0.3)
+            plt.tight_layout()  # ✅ AGAR TIDAK CROWDED
             st.pyplot(fig)
 
         with col2:
@@ -400,7 +401,8 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Predictions", "Training History", "Forecast"])
 
             with tab1:
-                fig, ax = plt.subplots(figsize=(12, 6))
+                # ✅ PERBAIKAN: UKURAN PLOT PREDICTIONS LEBIH KECIL
+                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
                 actual = st.session_state.baseline_results['actual']
 
                 ax.plot(actual, label='Actual', linewidth=2, color='blue')
@@ -416,11 +418,13 @@ def main():
                 ax.set_ylabel("Price")
                 ax.legend()
                 ax.grid(True, alpha=0.3)
+                plt.tight_layout()
                 st.pyplot(fig)
 
             with tab2:
                 if 'final_results' in st.session_state:
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+                    # ✅ PERBAIKAN: UKURAN TRAINING HISTORY LEBIH KECIL
+                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))  # DARI (15,5) JADI (12,4)
 
                     # Baseline training history
                     ax1.plot(st.session_state.baseline_results.get('history', {}).get('loss', []),
@@ -444,6 +448,7 @@ def main():
                     ax2.legend()
                     ax2.grid(True, alpha=0.3)
 
+                    plt.tight_layout()
                     st.pyplot(fig)
 
             with tab3:
@@ -490,12 +495,12 @@ def main():
 
                                 st.dataframe(forecast_df.style.format({'Forecasted Price': '{:.2f}'}))
 
-                                # Plot forecast
-                                fig, ax = plt.subplots(figsize=(12, 6))
+                                # ✅ PERBAIKAN: UKURAN PLOT FORECAST LEBIH KECIL
+                                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
 
-                                # Historical data (last 100 days)
-                                historical_dates = df.index[-100:]
-                                historical_prices = df['Close'].values[-100:]
+                                # Historical data (last 60 days saja biar lebih compact)
+                                historical_dates = df.index[-60:]
+                                historical_prices = df['Close'].values[-60:]
 
                                 ax.plot(historical_dates, historical_prices,
                                        label='Historical', color='steelblue', linewidth=2)
@@ -513,6 +518,7 @@ def main():
                                 ax.legend()
                                 ax.grid(True, alpha=0.3)
                                 plt.xticks(rotation=45)
+                                plt.tight_layout()  # ✅ AGAR RAPI
                                 st.pyplot(fig)
 
                             except Exception as e:
