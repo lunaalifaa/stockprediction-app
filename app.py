@@ -267,7 +267,7 @@ def main():
                             'mse': mse_base,
                             'mape': mape_base,
                             'predictions': y_pred_base,
-                            'actual': y_true_base
+                            'actual': y_true_base,
                             'history': history_base.history  
                         }
                         st.success("Baseline model trained successfully!")
