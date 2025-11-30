@@ -213,11 +213,17 @@ def main():
                         # Create sequences
                         X_seq_all, y_seq_all = make_sequences(Xs, ys, window=lookback_days)
 
-                        # ✅ PERBAIKAN: PAKAI SPLIT SAMA DENGAN COLAB
-                        X_train = X_seq_all[:n_train]      # ✅ SAMA DENGAN COLAB
-                        y_train = y_seq_all[:n_train]  
-                        X_test = X_seq_all[n_train:]
-                        y_test = y_seq_all[n_train:]
+                        # ✅ PERBAIKAN: PAKAI SPLIT SAMA PERSIS DENGAN COLAB
+                        train_end_idx = n_train - lookback_days  # = n_train - 1
+
+                        if train_end_idx <= 0:
+                            st.error("Lookback window too large for training data. Please reduce lookback days.")
+                            return
+
+                        X_train = X_seq_all[:train_end_idx]      # ✅ SAMA PERSIS COLAB
+                        y_train = y_seq_all[:train_end_idx]  
+                        X_test = X_seq_all[train_end_idx:]
+                        y_test = y_seq_all[train_end_idx:]
 
                         # Store in session state
                         st.session_state.X_train = X_train
