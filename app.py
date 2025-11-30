@@ -276,118 +276,105 @@ def main():
                             st.subheader("PSO Optimization")
                             pso_progress = st.progress(0)
 
-                            # PSO objective function - YANG SUDAH DIPERBAIKI
+                            # PSO objective function - FIXED VERSION
                             def make_pso_obj(X_tr, y_tr, X_va, y_va, scaler_y):
                                 def obj_fn(particles):
                                     n_particles = particles.shape[0]
-                                    costs = np.ones(n_particles) * 1e12  # Default high cost
+                                    costs = np.full(n_particles, 1e12)  # PASTIKAN SELALU 10 VALUES
                                     
-                                    for i, p in enumerate(particles):
+                                    for i in range(n_particles):
                                         try:
-                                            # Extract and validate parameters
-                                            units = int(np.clip(np.round(p[0]), 8, 128))
-                                            lr = float(np.clip(p[1], 1e-8, 1e-1))
-                                            batch = int(np.clip(np.round(p[2]), 1, 128))
-                                            dropout = float(np.clip(p[3], 0.0, 0.3))
+                                            p = particles[i]
+                                            # Parameter extraction dengan clamping yang lebih ketat
+                                            units = int(np.clip(np.round(p[0]), 16, 64))
+                                            lr = float(np.clip(p[1], 1e-4, 1e-2))
+                                            batch = int(np.clip(np.round(p[2]), 16, 64))
+                                            dropout = float(np.clip(p[3], 0.0, 0.2))
                                             
-                                            # Skip if invalid parameters
-                                            if units <= 0 or batch <= 0 or lr <= 0:
-                                                costs[i] = 1e12
-                                                continue
-
-                                            set_seed(42)
+                                            # Build simple model
                                             K.clear_session()
-
-                                            # Build model
-                                            model = build_lstm_model(
-                                                input_shape=(X_tr.shape[1], X_tr.shape[2]),
-                                                units=units,
-                                                dropout=dropout,
-                                                lr=lr
+                                            model = Sequential([
+                                                LSTM(units, input_shape=(X_tr.shape[1], X_tr.shape[2])),
+                                                Dropout(dropout),
+                                                Dense(1)
+                                            ])
+                                            model.compile(optimizer=Adam(learning_rate=lr), loss='mse')
+                                            
+                                            # Quick training
+                                            model.fit(
+                                                X_tr, y_tr,
+                                                epochs=3,
+                                                batch_size=batch,
+                                                validation_data=(X_va, y_va),
+                                                verbose=0,
+                                                shuffle=False
                                             )
-
-                                            # Train with error handling
-                                            try:
-                                                model.fit(
-                                                    X_tr, y_tr,
-                                                    epochs=5,
-                                                    batch_size=batch,
-                                                    validation_data=(X_va, y_va),
-                                                    verbose=0
-                                                )
-
-                                                # Predict and calculate cost
-                                                yv_pred = model.predict(X_va, verbose=0)
+                                            
+                                            # Prediction
+                                            yv_pred = model.predict(X_va, verbose=0)
+                                            
+                                            # Ensure same dimensions
+                                            if yv_pred.shape[0] == y_va.shape[0]:
                                                 yv_pred_orig = scaler_y.inverse_transform(yv_pred).flatten()
                                                 yv_true_orig = scaler_y.inverse_transform(y_va).flatten()
-
-                                                # Ensure arrays have same length
-                                                min_len = min(len(yv_true_orig), len(yv_pred_orig))
-                                                if min_len > 0:
-                                                    costs[i] = mean_squared_error(
-                                                        yv_true_orig[:min_len], 
-                                                        yv_pred_orig[:min_len]
-                                                    )
+                                                
+                                                if len(yv_true_orig) > 0 and len(yv_pred_orig) > 0:
+                                                    costs[i] = mean_squared_error(yv_true_orig, yv_pred_orig)
                                                 else:
                                                     costs[i] = 1e12
-
-                                            except Exception as e:
+                                            else:
                                                 costs[i] = 1e12
-
-                                            K.clear_session()
-
+                                                
                                         except Exception as e:
-                                            costs[i] = 1e12  # PASTIKAN selalu return value
-
-                                    return costs  # PASTIKAN return array dengan n_particles elements
-                                
+                                            costs[i] = 1e12
+                                            continue
+                                            
+                                    return costs  # PASTI return array dengan 10 elements
+                                    
                                 return obj_fn
 
                             # Validasi data sebelum PSO
-                            if 'X_train' not in st.session_state or st.session_state.X_train is None:
-                                st.error("❌ Training data tidak tersedia! Silakan train baseline model terlebih dahulu.")
+                            if 'X_train' not in st.session_state:
+                                st.error("❌ Training data tidak tersedia!")
                                 return
                                 
                             X_train = st.session_state.X_train
                             y_train = st.session_state.y_train
                             
-                            if len(X_train) == 0 or len(y_train) == 0:
-                                st.error("❌ Data training kosong! Periksa konfigurasi data Anda.")
+                            if len(X_train) < 20:
+                                st.error(f"❌ Data training terlalu sedikit: {len(X_train)} samples")
                                 return
 
-                            # Prepare PSO data dengan error handling
-                            try:
-                                val_frac_for_pso = 0.2
-                                n_tr_samples = X_train.shape[0]
-                                
-                                if n_tr_samples < 10:
-                                    st.error("❌ Data training terlalu sedikit untuk PSO!")
-                                    return
-                                    
-                                n_tr_val = max(1, int(n_tr_samples * (1 - val_frac_for_pso)))
-                                
-                                # Pastikan ada data untuk validation
-                                if n_tr_samples - n_tr_val < 1:
-                                    n_tr_val = n_tr_samples - 1
-                                    
-                                X_tr_for_pso = X_train[:n_tr_val]
-                                y_tr_for_pso = y_train[:n_tr_val]
-                                X_val_for_pso = X_train[n_tr_val:]
-                                y_val_for_pso = y_train[n_tr_val:]
-                                
-                                # Validasi shapes
-                                if len(X_val_for_pso) == 0 or len(y_val_for_pso) == 0:
-                                    st.error("❌ Data validation kosong! Adjust train-test split.")
-                                    return
+                            # PREPARE PSO DATA - FIXED VERSION
+                            # Gunakan approach yang lebih sederhana dan robust
+                            total_samples = len(X_train)
+                            train_size = max(1, int(0.8 * total_samples))  # 80% for training
+                            
+                            X_tr_for_pso = X_train[:train_size]
+                            y_tr_for_pso = y_train[:train_size]
+                            X_val_for_pso = X_train[train_size:]
+                            y_val_for_pso = y_train[train_size:]
+                            
+                            # Fallback jika validation data kosong
+                            if len(X_val_for_pso) == 0:
+                                # Use last 10 samples for validation
+                                val_size = min(10, total_samples - 1)
+                                X_tr_for_pso = X_train[:-val_size]
+                                y_tr_for_pso = y_train[:-val_size]
+                                X_val_for_pso = X_train[-val_size:]
+                                y_val_for_pso = y_train[-val_size:]
+                            
+                            st.info(f"🔧 PSO Data: Train={len(X_tr_for_pso)}, Val={len(X_val_for_pso)}")
 
-                            except Exception as e:
-                                st.error(f"❌ Error preparing PSO data: {str(e)}")
+                            # Validasi final
+                            if len(X_val_for_pso) == 0:
+                                st.error("❌ Tidak ada data validation untuk PSO!")
                                 return
 
                             pso_obj = make_pso_obj(
                                 X_tr_for_pso, y_tr_for_pso,
                                 X_val_for_pso, y_val_for_pso,
-                                scaler_y
+                                st.session_state.scaler_y
                             )
 
                             # Run PSO dengan error handling
@@ -399,61 +386,56 @@ def main():
                                     bounds=PSO_BOUNDS
                                 )
 
-                                # Manual PSO loop dengan progress updates
+                                # PSO iterations
                                 history_gbest_cost = []
-
+                                
                                 for it in range(PSO_ITERS):
-                                    # PENTING: Panggil objective function dan tangani error
-                                    try:
-                                        costs = pso_obj(optimizer.swarm.position)
-                                        
-                                        # Validasi costs tidak kosong
-                                        if len(costs) == 0 or np.all(np.isinf(costs)):
-                                            st.error("❌ Semua particles gagal! Periksa parameter bounds.")
-                                            break
-                                            
-                                        # Update best positions
-                                        mask = costs < optimizer.swarm.pbest_cost
-                                        if np.any(mask):
-                                            optimizer.swarm.pbest_cost[mask] = costs[mask]
-                                            optimizer.swarm.pbest_pos[mask] = optimizer.swarm.position[mask].copy()
-
-                                        best_idx = np.argmin(optimizer.swarm.pbest_cost)
-                                        optimizer.swarm.best_cost = optimizer.swarm.pbest_cost[best_idx]
-                                        optimizer.swarm.best_pos = optimizer.swarm.pbest_pos[best_idx].copy()
-
-                                        history_gbest_cost.append(float(optimizer.swarm.best_cost))
-
-                                        # Update PSO velocity dan position
-                                        r1 = np.random.rand(*optimizer.swarm.position.shape)
-                                        r2 = np.random.rand(*optimizer.swarm.position.shape)
-                                        optimizer.swarm.velocity = (
-                                            PSO_OPTIONS['w'] * optimizer.swarm.velocity
-                                            + PSO_OPTIONS['c1'] * r1 * (optimizer.swarm.pbest_pos - optimizer.swarm.position)
-                                            + PSO_OPTIONS['c2'] * r2 * (optimizer.swarm.best_pos - optimizer.swarm.position)
-                                        )
-                                        optimizer.swarm.position += optimizer.swarm.velocity
-
-                                        # Clip to bounds
-                                        lb, ub = np.array(PSO_BOUNDS[0]), np.array(PSO_BOUNDS[1])
-                                        optimizer.swarm.position = np.clip(optimizer.swarm.position, lb, ub)
-
-                                        pso_progress.progress((it + 1) / PSO_ITERS)
-                                        
-                                    except Exception as e:
-                                        st.error(f"❌ Error di iterasi PSO {it}: {str(e)}")
+                                    # Panggil objective function
+                                    costs = pso_obj(optimizer.swarm.position)
+                                    
+                                    # DEBUG: Check costs shape
+                                    if len(costs) != PSO_N_PARTICLES:
+                                        st.error(f"❌ Costs shape error: {costs.shape}, expected {PSO_N_PARTICLES}")
                                         break
+                                    
+                                    # Update PSO
+                                    mask = costs < optimizer.swarm.pbest_cost
+                                    optimizer.swarm.pbest_cost[mask] = costs[mask]
+                                    optimizer.swarm.pbest_pos[mask] = optimizer.swarm.position[mask].copy()
+                                    
+                                    best_idx = np.argmin(optimizer.swarm.pbest_cost)
+                                    optimizer.swarm.best_cost = optimizer.swarm.pbest_cost[best_idx]
+                                    optimizer.swarm.best_pos = optimizer.swarm.pbest_pos[best_idx].copy()
+                                    
+                                    history_gbest_cost.append(float(optimizer.swarm.best_cost))
+                                    
+                                    # Update velocity and position
+                                    r1 = np.random.rand(*optimizer.swarm.position.shape)
+                                    r2 = np.random.rand(*optimizer.swarm.position.shape)
+                                    optimizer.swarm.velocity = (
+                                        PSO_OPTIONS['w'] * optimizer.swarm.velocity +
+                                        PSO_OPTIONS['c1'] * r1 * (optimizer.swarm.pbest_pos - optimizer.swarm.position) +
+                                        PSO_OPTIONS['c2'] * r2 * (optimizer.swarm.best_pos - optimizer.swarm.position)
+                                    )
+                                    optimizer.swarm.position += optimizer.swarm.velocity
+                                    
+                                    # Clip to bounds
+                                    lb, ub = np.array(PSO_BOUNDS[0]), np.array(PSO_BOUNDS[1])
+                                    optimizer.swarm.position = np.clip(optimizer.swarm.position, lb, ub)
+                                    
+                                    pso_progress.progress((it + 1) / PSO_ITERS)
 
                                 # Cek apakah PSO berhasil
                                 if len(history_gbest_cost) == 0:
-                                    st.error("❌ PSO gagal total! Tidak ada iterasi yang berhasil.")
+                                    st.error("❌ PSO gagal total!")
                                     return
                                     
+                                # Get best parameters
                                 best_pos = optimizer.swarm.best_pos
-                                best_units = int(np.clip(np.round(best_pos[0]), 8, 128))
-                                best_lr = float(np.clip(best_pos[1], 1e-8, 1e-1))
-                                best_batch = int(np.clip(np.round(best_pos[2]), 1, 128))
-                                best_dropout = float(np.clip(best_pos[3], 0.0, 0.3))
+                                best_units = int(np.clip(np.round(best_pos[0]), 16, 64))
+                                best_lr = float(np.clip(best_pos[1], 1e-4, 1e-2))
+                                best_batch = int(np.clip(np.round(best_pos[2]), 16, 64))
+                                best_dropout = float(np.clip(best_pos[3], 0.0, 0.2))
 
                                 st.session_state.pso_results = {
                                     'best_units': best_units,
@@ -464,7 +446,7 @@ def main():
                                     'convergence': history_gbest_cost
                                 }
 
-                                st.success(f"✅ PSO Optimization completed! Best validation loss: {history_gbest_cost[-1]:.6f}")
+                                st.success(f"✅ PSO Completed! Best Val Loss: {history_gbest_cost[-1]:.6f}")
 
                                 # Train final model with PSO parameters
                                 st.subheader("Final PSO-LSTM Model")
@@ -510,7 +492,7 @@ def main():
                                 st.success("PSO-LSTM model trained successfully!")
 
                             except Exception as e:
-                                st.error(f"❌ PSO execution failed: {str(e)}")
+                                st.error(f"❌ PSO Error: {str(e)}")
 
                     except Exception as e:
                         st.error(f"Error during training: {str(e)}")
@@ -696,4 +678,4 @@ def main():
             st.write("Run training and view predictions")
 
 if __name__ == "__main__":
-    main()
+    main() 
