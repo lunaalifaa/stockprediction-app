@@ -253,8 +253,6 @@ def main():
                             verbose=0
                         )
 
-                        st.session_state.baseline_results['history'] = history_base.history
-
                         progress_bar.progress(50)
 
                         # Evaluate baseline
