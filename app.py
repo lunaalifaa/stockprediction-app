@@ -15,7 +15,7 @@ import tensorflow as tf
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
-
+tf.config.experimental.enable_op_determinism()
 import streamlit as st
 import numpy as np
 import pandas as pd
