@@ -111,46 +111,36 @@ def load_sample_data():
         prices = 4000 + np.cumsum(np.random.randn(len(dates)) * 50)
         df = pd.DataFrame({'Close': prices}, index=dates)
         return df
-
 def main():
     st.title("📈 Stock Price Prediction with LSTM-PSO")
     st.markdown("Prediksi harga saham menggunakan model LSTM yang dioptimasi dengan Particle Swarm Optimization")
 
-    # Sidebar
-    st.sidebar.header("Configuration")
+    st.sidebar.header("Upload Data")
 
-    # Data source selection
-    data_source = st.sidebar.radio(
-        "Data Source",
-        ["Upload Excel File", "Yahoo Finance Ticker", "Use Sample Data"]
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload Excel File (.xlsx)",
+        type=['xlsx']
     )
 
     df = None
 
-    if data_source == "Upload Excel File":
-        uploaded_file = st.sidebar.file_uploader("Upload Excel File", type=['xlsx'])
-        if uploaded_file:
+    if uploaded_file is not None:
+        try:
             df = pd.read_excel(uploaded_file)
-            if 'Date' in df.columns:
+
+            # Validasi kolom wajib
+            if 'Date' not in df.columns or 'Close' not in df.columns:
+                st.sidebar.error("File Excel harus memiliki kolom 'Date' dan 'Close'")
+                df = None
+            else:
                 df['Date'] = pd.to_datetime(df['Date'])
                 df = df.sort_values('Date')
                 df.set_index('Date', inplace=True)
 
-    elif data_source == "Yahoo Finance Ticker":
-        ticker = st.sidebar.text_input("Stock Ticker", "TLKM.JK")
-        if st.sidebar.button("Download Data"):
-            with st.spinner("Downloading data..."):
-                try:
-                    df = yf.download(ticker, period="2y")
-                    st.sidebar.success(f"Data for {ticker} downloaded successfully!")
-                except Exception as e:
-                    st.sidebar.error(f"Error downloading data: {e}")
+                st.sidebar.success("File Excel berhasil diunggah!")
 
-    else:  # Use Sample Data
-        if st.sidebar.button("Load Sample Data"):
-            with st.spinner("Loading sample data..."):
-                df = load_sample_data()
-                st.sidebar.success("Sample data loaded successfully!")
+        except Exception as e:
+            st.sidebar.error(f"Gagal membaca file Excel: {e}")
 
     # Display data if loaded
     if df is not None and not df.empty:
