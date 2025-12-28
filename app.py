@@ -111,6 +111,7 @@ def load_sample_data():
         prices = 4000 + np.cumsum(np.random.randn(len(dates)) * 50)
         df = pd.DataFrame({'Close': prices}, index=dates)
         return df
+
 def main():
     st.title("📈 Stock Price Prediction with LSTM-PSO")
     st.markdown("Prediksi harga saham menggunakan model LSTM yang dioptimasi dengan Particle Swarm Optimization")
@@ -232,6 +233,7 @@ def main():
                         st.session_state.scaler_X = scaler_X
                         st.session_state.scaler_y = scaler_y
                         st.session_state.lookback_days = lookback_days
+                        st.session_state.n_train = n_train  # Simpan n_train untuk plot
 
                         # Baseline model
                         st.subheader("Baseline LSTM Model")
@@ -391,23 +393,70 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Predictions", "Training History", "Forecast"])
 
             with tab1:
-                # ✅ PERBAIKAN: UKURAN PLOT PREDICTIONS LEBIH KECIL
-                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
+                # ===== PERBAIKAN: PLOT DENGAN TANGGAL BULANAN =====
+                # Dapatkan tanggal untuk data test
+                n_train = st.session_state.n_train
+                # Tanggal untuk data test dimulai dari n_train
+                dates_test = df.index[n_train:]
+                
+                # Pastikan panjang data sesuai
                 actual = st.session_state.baseline_results['actual']
-
-                ax.plot(actual, label='Actual', linewidth=2, color='blue')
-                ax.plot(st.session_state.baseline_results['predictions'],
-                       label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
-
+                baseline_predictions = st.session_state.baseline_results['predictions']
+                
+                # Jika panjang tidak sama, sesuaikan
+                min_len = min(len(dates_test), len(actual), len(baseline_predictions))
+                dates_test_plot = dates_test[:min_len]
+                actual_plot = actual[:min_len]
+                baseline_predictions_plot = baseline_predictions[:min_len]
+                
+                # Buat plot
+                fig, ax = plt.subplots(figsize=(10, 4))
+                
+                ax.plot(dates_test_plot, actual_plot, 
+                       label='Actual (test)', linewidth=2, color='blue')
+                
+                ax.plot(dates_test_plot, baseline_predictions_plot,
+                       label='Predicted (baseline)', linewidth=2, color='red')
+                
                 if 'final_results' in st.session_state:
-                    ax.plot(st.session_state.final_results['predictions'],
-                           label='PSO-LSTM', linewidth=2, color='orange')
-
-                ax.set_title("Actual vs Predicted Prices")
-                ax.set_xlabel("Time Index")
-                ax.set_ylabel("Price")
+                    final_predictions = st.session_state.final_results['predictions']
+                    final_predictions_plot = final_predictions[:min_len]
+                    ax.plot(dates_test_plot, final_predictions_plot,
+                           label='Predicted (final PSO-LSTM)', linewidth=2, color='orange')
+                
+                ax.set_title("Comparison: Actual vs Predicted PSO-LSTM vs Predicted Baseline LSTM")
                 ax.legend()
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Price")
                 ax.grid(True, alpha=0.3)
+                
+                # Format x-axis dengan label bulanan
+                # Konversi dates_test ke Period bulanan untuk mendapatkan label
+                month_periods = dates_test_plot.to_period('M').unique()
+                month_labels = [period.strftime('%b %Y') for period in month_periods]
+                
+                # Dapatkan posisi untuk setiap bulan (ambil tanggal pertama di setiap bulan)
+                month_positions = []
+                for period in month_periods:
+                    # Cari indeks tanggal pertama bulan ini di dates_test
+                    mask = dates_test_plot.to_period('M') == period
+                    if any(mask):
+                        first_idx = np.where(mask)[0][0]
+                        if first_idx < len(dates_test_plot):
+                            month_positions.append(first_idx)
+                
+                # Set x-ticks dengan label bulanan
+                if len(month_positions) > 0:
+                    # Ambil maksimal 12 label agar tidak terlalu padat
+                    if len(month_positions) > 12:
+                        step = len(month_positions) // 12 + 1
+                        month_positions = month_positions[::step]
+                        month_labels = month_labels[::step]
+                    
+                    ax.set_xticks([dates_test_plot[pos] for pos in month_positions])
+                    ax.set_xticklabels([dates_test_plot[pos].strftime('%b %Y') for pos in month_positions], 
+                                      rotation=45, ha='right')
+                
                 plt.tight_layout()
                 st.pyplot(fig)
 
