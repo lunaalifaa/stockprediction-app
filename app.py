@@ -395,7 +395,6 @@ def main():
                 fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
                 actual = st.session_state.baseline_results['actual']
 
-                # GARIS PLOT TETAP SAMA PERSIS - TIDAK ADA PERUBAHAN!
                 ax.plot(actual, label='Actual', linewidth=2, color='blue')
                 ax.plot(st.session_state.baseline_results['predictions'],
                        label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
@@ -404,39 +403,11 @@ def main():
                     ax.plot(st.session_state.final_results['predictions'],
                            label='PSO-LSTM', linewidth=2, color='orange')
 
-                ax.set_title("Comparison: Actual vs Predicted PSO-LSTM vs Predicted Baseline LSTM")
-                ax.legend()
-                ax.set_xlabel("Date")  # Diubah dari "Time Index" menjadi "Date"
+                ax.set_title("Actual vs Predicted Prices")
+                ax.set_xlabel("Time Index")
                 ax.set_ylabel("Price")
+                ax.legend()
                 ax.grid(True, alpha=0.3)
-                
-                # HANYA MENGUBAH LABEL X-AXIS MENJADI BULANAN
-                # Asumsi: setiap 20 data point = 1 bulan
-                n_points = len(actual)
-                months = ['Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024', 'Jan 2025', 
-                          'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025']
-                
-                # Tentukan posisi ticks (setiap 20 data)
-                tick_positions = [0]
-                month_labels = [months[0]]
-                
-                for i in range(1, len(months)):
-                    pos = i * 20
-                    if pos < n_points:
-                        tick_positions.append(pos)
-                        month_labels.append(months[i])
-                
-                # Tambahkan posisi terakhir jika belum termasuk
-                if n_points - 1 not in tick_positions and n_points > 0:
-                    tick_positions.append(n_points - 1)
-                    # Jika sudah melebihi bulan yang tersedia, tambahkan bulan generik
-                    if len(tick_positions) > len(month_labels):
-                        month_labels.append(f"Month {len(tick_positions)}")
-                
-                # Set ticks dan labels
-                ax.set_xticks(tick_positions)
-                ax.set_xticklabels(month_labels, rotation=45, ha='right')
-                
                 plt.tight_layout()
                 st.pyplot(fig)
 
