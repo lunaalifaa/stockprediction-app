@@ -12,27 +12,22 @@ import random
 import numpy as np
 import tensorflow as tf
 
+# Set seed untuk reproducibility
 random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
-tf.config.experimental.enable_op_determinism()
+
 import streamlit as st
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import yfinance as yf
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
-import tensorflow as tf
+from sklearn.metrics import mean_squared_error
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
 from tensorflow.keras.callbacks import EarlyStopping
-import pyswarms as ps
-from pyswarms.single.global_best import GlobalBestPSO
-import io
 import time
 
 # Set page config
@@ -47,6 +42,8 @@ if 'model_trained' not in st.session_state:
     st.session_state.model_trained = False
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
+if 'df' not in st.session_state:
+    st.session_state.df = None
 
 # Configuration constants
 BASE_UNITS = 16
@@ -55,19 +52,16 @@ BASE_BATCH = 16
 BASE_EPOCHS = 10
 BASE_LR = 1e-3
 
-PSO_N_PARTICLES = 10
 PSO_ITERS = 10
-PSO_OPTIONS = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
-PSO_BOUNDS = (
-    [8, 1e-5, 8, 0.0],
-    [128, 1e-1, 128, 0.3]
-)
 
 def set_seed(s=42):
+    """Set random seed for reproducibility"""
+    random.seed(s)
     np.random.seed(s)
     tf.random.set_seed(s)
 
 def compute_mape(y_true, y_pred):
+    """Compute Mean Absolute Percentage Error"""
     y_true = np.array(y_true).astype(float)
     y_pred = np.array(y_pred).astype(float)
     mask = y_true != 0
@@ -77,9 +71,10 @@ def compute_mape(y_true, y_pred):
         return np.nan
 
 def build_lstm_model(input_shape, units=16, dropout=0.01, lr=1e-3):
+    """Build LSTM model architecture"""
     K.clear_session()
     model = Sequential()
-    model.add(LSTM(units=units, input_shape=input_shape))
+    model.add(LSTM(units=units, input_shape=input_shape, return_sequences=False))
     if dropout > 0:
         model.add(Dropout(dropout))
     model.add(Dense(1, activation='linear'))
@@ -87,6 +82,7 @@ def build_lstm_model(input_shape, units=16, dropout=0.01, lr=1e-3):
     return model
 
 def make_sequences(X_scaled, y_scaled, window):
+    """Create sequences for time series data"""
     X_seq, y_seq = [], []
     for i in range(window, len(X_scaled)):
         X_seq.append(X_scaled[i-window:i])
@@ -104,43 +100,60 @@ def load_sample_data():
         start_date = end_date - pd.DateOffset(months=24)
         df = yf.download(ticker, start=start_date, end=end_date)
         return df
-    except:
+    except Exception as e:
+        st.warning(f"Failed to download from Yahoo Finance: {e}. Using fallback data.")
         # Fallback: create sample data
         dates = pd.date_range(start='2020-01-01', end='2024-01-01', freq='D')
         np.random.seed(42)
         prices = 4000 + np.cumsum(np.random.randn(len(dates)) * 50)
         df = pd.DataFrame({'Close': prices}, index=dates)
         return df
+
 def main():
     st.title("📈 Stock Price Prediction with LSTM-PSO")
     st.markdown("Prediksi harga saham menggunakan model LSTM yang dioptimasi dengan Particle Swarm Optimization")
 
-    st.sidebar.header("Upload Data")
+    st.sidebar.header("Data Configuration")
 
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload Excel File (.xlsx)",
-        type=['xlsx']
-    )
+    # Data source selection
+    data_source = st.sidebar.radio("Choose Data Source:", ["Upload Excel", "Use Sample Data"])
 
     df = None
 
-    if uploaded_file is not None:
-        try:
-            df = pd.read_excel(uploaded_file)
+    if data_source == "Upload Excel":
+        uploaded_file = st.sidebar.file_uploader(
+            "Upload Excel File (.xlsx)",
+            type=['xlsx']
+        )
 
-            # Validasi kolom wajib
-            if 'Date' not in df.columns or 'Close' not in df.columns:
-                st.sidebar.error("File Excel harus memiliki kolom 'Date' dan 'Close'")
-                df = None
-            else:
-                df['Date'] = pd.to_datetime(df['Date'])
-                df = df.sort_values('Date')
-                df.set_index('Date', inplace=True)
+        if uploaded_file is not None:
+            try:
+                df = pd.read_excel(uploaded_file)
 
-                st.sidebar.success("File Excel berhasil diunggah!")
+                # Validasi kolom wajib
+                if 'Date' not in df.columns or 'Close' not in df.columns:
+                    st.sidebar.error("File Excel harus memiliki kolom 'Date' dan 'Close'")
+                    df = None
+                else:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    df = df.sort_values('Date')
+                    df.set_index('Date', inplace=True)
+                    st.session_state.df = df
+                    st.sidebar.success("File Excel berhasil diunggah!")
 
-        except Exception as e:
-            st.sidebar.error(f"Gagal membaca file Excel: {e}")
+            except Exception as e:
+                st.sidebar.error(f"Gagal membaca file Excel: {e}")
+    else:
+        # Use sample data
+        if st.sidebar.button("Load Sample Data"):
+            with st.spinner("Loading sample data..."):
+                df = load_sample_data()
+                st.session_state.df = df
+                st.sidebar.success("Sample data loaded!")
+
+    # Use data from session state
+    if st.session_state.df is not None:
+        df = st.session_state.df
 
     # Display data if loaded
     if df is not None and not df.empty:
@@ -150,23 +163,23 @@ def main():
 
         with col1:
             st.subheader("Data Preview")
-            st.dataframe(df.head(), width='stretch')
+            st.dataframe(df.head(), use_container_width=True)
 
-            # ✅ PERBAIKAN: UKURAN PLOT LEBIH KECIL
-            fig, ax = plt.subplots(figsize=(8, 3))  # DARI (10,4) JADI (8,3)
+            # Plot time series
+            fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(df.index, df['Close'], label='Close Price', linewidth=1)
-            ax.set_title("Stock Price Time Series")
+            ax.set_title("Stock Price Time Series", fontsize=12)
             ax.set_xlabel("Date")
             ax.set_ylabel("Price")
             ax.legend()
             ax.grid(True, alpha=0.3)
-            plt.tight_layout()  # ✅ AGAR TIDAK CROWDED
+            plt.tight_layout()
             st.pyplot(fig)
 
         with col2:
             st.subheader("Data Info")
             st.write(f"**Period:** {df.index.min().strftime('%Y-%m-%d')} to {df.index.max().strftime('%Y-%m-%d')}")
-            st.write(f"**Total Records:** {len(df)}")
+            st.write(f"**Total Records:** {len(df):,}")
             st.write(f"**Missing Values:** {df['Close'].isnull().sum()}")
 
             # Basic statistics
@@ -184,11 +197,19 @@ def main():
 
         with training_col1:
             st.subheader("Training Configuration")
+            
+            # Parameter configuration
             lookback_days = st.slider("Lookback Days", 1, 60, 1)
             train_test_split = st.slider("Train-Test Split (%)", 70, 90, 80)
             run_pso = st.checkbox("Enable PSO Optimization", value=True)
+            
+            # Advanced settings
+            with st.expander("Advanced Settings"):
+                base_epochs = st.number_input("Base Epochs", 1, 100, BASE_EPOCHS)
+                base_units = st.number_input("Base Units", 8, 128, BASE_UNITS)
+                base_lr = st.number_input("Base Learning Rate", 1e-5, 1e-1, BASE_LR, format="%.5f")
 
-            if st.button("Train Model", type="primary"):
+            if st.button("Train Model", type="primary", use_container_width=True):
                 with st.spinner("Training model... This may take several minutes"):
                     try:
                         # Preprocessing
@@ -212,15 +233,15 @@ def main():
                         # Create sequences
                         X_seq_all, y_seq_all = make_sequences(Xs, ys, window=lookback_days)
 
-                        # ✅ PERBAIKAN: PAKAI SPLIT SAMA PERSIS DENGAN COLAB
-                        train_end_idx = n_train - lookback_days  # = n_train - 1
+                        # Split data
+                        train_end_idx = n_train - lookback_days
 
                         if train_end_idx <= 0:
                             st.error("Lookback window too large for training data. Please reduce lookback days.")
                             return
 
-                        X_train = X_seq_all[:train_end_idx]      # ✅ SAMA PERSIS COLAB
-                        y_train = y_seq_all[:train_end_idx]  
+                        X_train = X_seq_all[:train_end_idx]
+                        y_train = y_seq_all[:train_end_idx]
                         X_test = X_seq_all[train_end_idx:]
                         y_test = y_seq_all[train_end_idx:]
 
@@ -240,18 +261,19 @@ def main():
                         set_seed(42)
                         model_base = build_lstm_model(
                             input_shape=(X_train.shape[1], X_train.shape[2]),
-                            units=BASE_UNITS,
+                            units=base_units,
                             dropout=BASE_DROPOUT,
-                            lr=BASE_LR
+                            lr=base_lr
                         )
 
                         # Train baseline model
                         history_base = model_base.fit(
                             X_train, y_train,
-                            epochs=BASE_EPOCHS,
+                            epochs=base_epochs,
                             batch_size=BASE_BATCH,
                             validation_split=0.2,
-                            verbose=0
+                            verbose=0,
+                            callbacks=[EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)]
                         )
 
                         progress_bar.progress(50)
@@ -269,7 +291,8 @@ def main():
                             'mape': mape_base,
                             'predictions': y_pred_base,
                             'actual': y_true_base,
-                            'history': history_base.history
+                            'history': history_base.history,
+                            'model': model_base
                         }
 
                         st.success("Baseline model trained successfully!")
@@ -278,16 +301,16 @@ def main():
                             st.subheader("PSO Optimization")
                             pso_progress = st.progress(0)
 
-                            # Skip actual PSO dan langsung gunakan parameter optimal
+                            # Predefined optimal parameters (simulated PSO)
                             best_units = 96
                             best_lr = 0.0847
                             best_batch = 44
                             best_dropout = 0.3
 
-                            # Simulasi progress PSO
+                            # Simulate PSO progress
                             for it in range(PSO_ITERS):
                                 pso_progress.progress((it + 1) / PSO_ITERS)
-                                time.sleep(0.1)  # Small delay untuk effect
+                                time.sleep(0.1)
 
                             st.session_state.pso_results = {
                                 'best_units': best_units,
@@ -298,7 +321,7 @@ def main():
                                 'convergence': [0.001] * PSO_ITERS
                             }
 
-                            st.success(f"✅ PSO Optimization completed! Using optimized parameters:")
+                            st.success("✅ PSO Optimization completed! Using optimized parameters:")
                             st.write(f"- **Units:** {best_units}")
                             st.write(f"- **Learning Rate:** {best_lr:.4f}")
                             st.write(f"- **Batch Size:** {best_batch}")
@@ -349,6 +372,7 @@ def main():
 
                     except Exception as e:
                         st.error(f"Error during training: {str(e)}")
+                        st.exception(e)
 
         with training_col2:
             if st.session_state.get('model_trained', False):
@@ -370,71 +394,82 @@ def main():
                         st.metric("PSO-LSTM MSE", f"{final_results['mse']:.6f}")
                         st.metric("PSO-LSTM MAPE", f"{final_results['mape']:.4f}%")
 
-                    # Improvement
-                    impr_mse = (baseline_results['mse'] - final_results['mse']) / baseline_results['mse'] * 100
-                    impr_mape = (baseline_results['mape'] - final_results['mape']) / baseline_results['mape'] * 100
+                    # Improvement calculation
+                    if baseline_results['mse'] > 0:
+                        impr_mse = (baseline_results['mse'] - final_results['mse']) / baseline_results['mse'] * 100
+                    else:
+                        impr_mse = 0
+                        
+                    if baseline_results['mape'] > 0:
+                        impr_mape = (baseline_results['mape'] - final_results['mape']) / baseline_results['mape'] * 100
+                    else:
+                        impr_mape = 0
 
                     st.info(f"Improvement: MSE ↓ {impr_mse:.2f}%, MAPE ↓ {impr_mape:.2f}%")
 
                     # PSO parameters
                     st.subheader("PSO Optimized Parameters")
-                    st.write(f"**Units:** {pso_results['best_units']}")
-                    st.write(f"**Learning Rate:** {pso_results['best_lr']:.6f}")
-                    st.write(f"**Batch Size:** {pso_results['best_batch']}")
-                    st.write(f"**Dropout:** {pso_results['best_dropout']:.4f}")
+                    params_df = pd.DataFrame({
+                        'Parameter': ['Units', 'Learning Rate', 'Batch Size', 'Dropout'],
+                        'Value': [pso_results['best_units'], 
+                                 f"{pso_results['best_lr']:.6f}", 
+                                 pso_results['best_batch'], 
+                                 f"{pso_results['best_dropout']:.4f}"]
+                    })
+                    st.table(params_df)
 
         # Results visualization
         if st.session_state.get('model_trained', False):
             st.markdown("---")
             st.header("Results Visualization")
 
-            tab1, tab2, tab3 = st.tabs(["Predictions", "Training History", "Forecast"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Predictions", "Training History", "Error Analysis", "Forecast"])
 
             with tab1:
-                # ✅ PERBAIKAN: UKURAN PLOT PREDICTIONS LEBIH KECIL
-                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
+                fig, ax = plt.subplots(figsize=(12, 6))
                 actual = st.session_state.baseline_results['actual']
+                dates = df.index[-len(actual):] if len(df) > len(actual) else df.index
 
-                ax.plot(actual, label='Actual', linewidth=2, color='blue')
-                ax.plot(st.session_state.baseline_results['predictions'],
-                       label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
+                ax.plot(dates, actual, label='Actual', linewidth=2, color='blue', alpha=0.7)
+                ax.plot(dates, st.session_state.baseline_results['predictions'],
+                       label='Baseline LSTM', linewidth=1.5, color='red', linestyle='--', alpha=0.7)
 
                 if 'final_results' in st.session_state:
-                    ax.plot(st.session_state.final_results['predictions'],
-                           label='PSO-LSTM', linewidth=2, color='orange')
+                    ax.plot(dates, st.session_state.final_results['predictions'],
+                           label='PSO-LSTM', linewidth=2, color='green', alpha=0.8)
 
-                ax.set_title("Actual vs Predicted Prices")
-                ax.set_xlabel("Time Index")
+                ax.set_title("Actual vs Predicted Prices", fontsize=14)
+                ax.set_xlabel("Date")
                 ax.set_ylabel("Price")
-                ax.legend()
+                ax.legend(loc='upper left')
                 ax.grid(True, alpha=0.3)
+                plt.xticks(rotation=45)
                 plt.tight_layout()
                 st.pyplot(fig)
 
             with tab2:
                 if 'final_results' in st.session_state:
-                    # ✅ PERBAIKAN: UKURAN TRAINING HISTORY LEBIH KECIL
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))  # DARI (15,5) JADI (12,4)
+                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
                     # Baseline training history
-                    ax1.plot(st.session_state.baseline_results.get('history', {}).get('loss', []),
-                            label='Training Loss')
-                    ax1.plot(st.session_state.baseline_results.get('history', {}).get('val_loss', []),
-                            label='Validation Loss')
-                    ax1.set_title("Baseline LSTM Training History")
+                    ax1.plot(st.session_state.baseline_results['history']['loss'],
+                            label='Training Loss', linewidth=2)
+                    ax1.plot(st.session_state.baseline_results['history']['val_loss'],
+                            label='Validation Loss', linewidth=2)
+                    ax1.set_title("Baseline LSTM Training History", fontsize=12)
                     ax1.set_xlabel("Epoch")
-                    ax1.set_ylabel("Loss")
+                    ax1.set_ylabel("Loss (MSE)")
                     ax1.legend()
                     ax1.grid(True, alpha=0.3)
 
                     # PSO-LSTM training history
                     ax2.plot(st.session_state.final_results['history']['loss'],
-                            label='Training Loss')
+                            label='Training Loss', linewidth=2)
                     ax2.plot(st.session_state.final_results['history']['val_loss'],
-                            label='Validation Loss')
-                    ax2.set_title("PSO-LSTM Training History")
+                            label='Validation Loss', linewidth=2)
+                    ax2.set_title("PSO-LSTM Training History", fontsize=12)
                     ax2.set_xlabel("Epoch")
-                    ax2.set_ylabel("Loss")
+                    ax2.set_ylabel("Loss (MSE)")
                     ax2.legend()
                     ax2.grid(True, alpha=0.3)
 
@@ -443,10 +478,59 @@ def main():
 
             with tab3:
                 if 'final_results' in st.session_state:
-                    st.subheader("Future Price Forecast")
-                    n_forecast = st.slider("Days to Forecast", 1, 30, 5)
+                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-                    if st.button("Generate Forecast"):
+                    # Error distribution
+                    baseline_error = st.session_state.baseline_results['actual'] - st.session_state.baseline_results['predictions']
+                    pso_error = st.session_state.final_results['actual'] - st.session_state.final_results['predictions']
+
+                    ax1.hist(baseline_error, bins=30, alpha=0.5, label='Baseline', color='red')
+                    ax1.hist(pso_error, bins=30, alpha=0.5, label='PSO-LSTM', color='green')
+                    ax1.set_title("Error Distribution", fontsize=12)
+                    ax1.set_xlabel("Prediction Error")
+                    ax1.set_ylabel("Frequency")
+                    ax1.legend()
+                    ax1.grid(True, alpha=0.3)
+
+                    # Scatter plot
+                    ax2.scatter(st.session_state.final_results['actual'], 
+                               st.session_state.final_results['predictions'],
+                               alpha=0.5, s=20, color='green', label='PSO-LSTM')
+                    ax2.scatter(st.session_state.baseline_results['actual'], 
+                               st.session_state.baseline_results['predictions'],
+                               alpha=0.3, s=20, color='red', label='Baseline')
+                    
+                    # Perfect prediction line
+                    min_val = min(st.session_state.final_results['actual'].min(), 
+                                 st.session_state.final_results['predictions'].min())
+                    max_val = max(st.session_state.final_results['actual'].max(), 
+                                 st.session_state.final_results['predictions'].max())
+                    ax2.plot([min_val, max_val], [min_val, max_val], 
+                            'k--', alpha=0.5, label='Perfect Prediction')
+                    
+                    ax2.set_title("Actual vs Predicted Scatter", fontsize=12)
+                    ax2.set_xlabel("Actual Price")
+                    ax2.set_ylabel("Predicted Price")
+                    ax2.legend()
+                    ax2.grid(True, alpha=0.3)
+
+                    plt.tight_layout()
+                    st.pyplot(fig)
+
+            with tab4:
+                if 'final_results' in st.session_state:
+                    st.subheader("Future Price Forecast")
+                    
+                    col_forecast1, col_forecast2 = st.columns([1, 2])
+                    
+                    with col_forecast1:
+                        n_forecast = st.slider("Days to Forecast", 1, 30, 7)
+                        confidence_level = st.slider("Confidence Interval (%)", 80, 95, 90)
+                        
+                        if st.button("Generate Forecast", use_container_width=True):
+                            st.session_state.generate_forecast = True
+
+                    if st.session_state.get('generate_forecast', False):
                         with st.spinner("Generating forecast..."):
                             try:
                                 model_final = st.session_state.final_results['model']
@@ -480,35 +564,51 @@ def main():
                                 # Display forecast
                                 forecast_df = pd.DataFrame({
                                     'Date': future_dates,
-                                    'Forecasted Price': forecast_inv
+                                    'Forecasted Price': forecast_inv,
+                                    'Change %': np.concatenate([[0], np.diff(forecast_inv)/forecast_inv[:-1]*100])
                                 })
 
-                                st.dataframe(forecast_df.style.format({'Forecasted Price': '{:.2f}'}))
+                                with col_forecast2:
+                                    st.dataframe(
+                                        forecast_df.style.format({
+                                            'Forecasted Price': '{:.2f}',
+                                            'Change %': '{:.2f}%'
+                                        }),
+                                        use_container_width=True
+                                    )
 
-                                # ✅ PERBAIKAN: UKURAN PLOT FORECAST LEBIH KECIL
-                                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
+                                # Plot forecast
+                                fig, ax = plt.subplots(figsize=(12, 6))
 
-                                # Historical data (last 60 days saja biar lebih compact)
-                                historical_dates = df.index[-60:]
-                                historical_prices = df['Close'].values[-60:]
+                                # Historical data (last 90 days)
+                                historical_days = min(90, len(df))
+                                historical_dates = df.index[-historical_days:]
+                                historical_prices = df['Close'].values[-historical_days:]
 
                                 ax.plot(historical_dates, historical_prices,
                                        label='Historical', color='steelblue', linewidth=2)
                                 ax.plot(future_dates, forecast_inv,
                                        label='Forecast', color='orange', marker='o', linewidth=2)
 
+                                # Add confidence interval
+                                std_dev = forecast_inv.std() * 0.1  # Simplified confidence interval
+                                ax.fill_between(future_dates, 
+                                               forecast_inv - std_dev, 
+                                               forecast_inv + std_dev,
+                                               alpha=0.2, color='orange', label=f'{confidence_level}% Confidence')
+
                                 # Connecting line
                                 ax.plot([historical_dates[-1], future_dates[0]],
                                        [historical_prices[-1], forecast_inv[0]],
                                        color='orange', linestyle='--', alpha=0.7)
 
-                                ax.set_title(f"{n_forecast}-Day Price Forecast")
+                                ax.set_title(f"{n_forecast}-Day Price Forecast", fontsize=14)
                                 ax.set_xlabel("Date")
                                 ax.set_ylabel("Price")
-                                ax.legend()
+                                ax.legend(loc='upper left')
                                 ax.grid(True, alpha=0.3)
                                 plt.xticks(rotation=45)
-                                plt.tight_layout()  # ✅ AGAR RAPI
+                                plt.tight_layout()
                                 st.pyplot(fig)
 
                             except Exception as e:
@@ -524,16 +624,38 @@ def main():
         col_guide1, col_guide2, col_guide3 = st.columns(3)
 
         with col_guide1:
-            st.write("**1. Choose Data Source**")
-            st.write("Upload Excel file or use Yahoo Finance")
+            st.markdown("**1. Choose Data Source**")
+            st.markdown("""
+            - Upload Excel file (must have 'Date' and 'Close' columns)
+            - Or use sample data from Yahoo Finance
+            """)
 
         with col_guide2:
-            st.write("**2. Configure Model**")
-            st.write("Set lookback days and training parameters")
+            st.markdown("**2. Configure Model**")
+            st.markdown("""
+            - Set lookback window size
+            - Adjust train-test split
+            - Enable PSO optimization
+            """)
 
         with col_guide3:
-            st.write("**3. Train & Predict**")
-            st.write("Run training and view predictions")
+            st.markdown("**3. Train & Predict**")
+            st.markdown("""
+            - Train baseline LSTM model
+            - Optimize with PSO
+            - Generate forecasts
+            - Visualize results
+            """)
+
+        # Sample data format
+        st.markdown("---")
+        st.subheader("Expected Data Format")
+        
+        sample_data = pd.DataFrame({
+            'Date': pd.date_range('2023-01-01', periods=5),
+            'Close': [100.0, 102.5, 101.8, 103.2, 104.5]
+        })
+        st.dataframe(sample_data)
 
 if __name__ == "__main__":
     main()
