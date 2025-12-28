@@ -233,8 +233,6 @@ def main():
                         st.session_state.scaler_X = scaler_X
                         st.session_state.scaler_y = scaler_y
                         st.session_state.lookback_days = lookback_days
-                        st.session_state.n_train = n_train  # Simpan n_train untuk plot
-                        st.session_state.df_test_dates = df.index[n_train:]  # Simpan tanggal untuk data test
 
                         # Baseline model
                         st.subheader("Baseline LSTM Model")
@@ -394,91 +392,57 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Predictions", "Training History", "Forecast"])
 
             with tab1:
-                # ===== PERBAIKAN: PLOT DENGAN TANGGAL BULANAN =====
-                # Dapatkan tanggal untuk data test
-                if 'df_test_dates' in st.session_state:
-                    dates_test = st.session_state.df_test_dates
-                    
-                    # Pastikan panjang data sesuai
-                    actual = st.session_state.baseline_results['actual']
-                    baseline_predictions = st.session_state.baseline_results['predictions']
-                    
-                    # Jika panjang tidak sama, sesuaikan
-                    min_len = min(len(dates_test), len(actual), len(baseline_predictions))
-                    dates_test_plot = dates_test[:min_len]
-                    actual_plot = actual[:min_len]
-                    baseline_predictions_plot = baseline_predictions[:min_len]
-                    
-                    # Buat plot
-                    fig, ax = plt.subplots(figsize=(12, 4))
-                    
-                    ax.plot(dates_test_plot, actual_plot, 
-                           label='Actual (test)', linewidth=2, color='blue')
-                    
-                    ax.plot(dates_test_plot, baseline_predictions_plot,
-                           label='Predicted (baseline)', linewidth=2, color='red')
-                    
-                    if 'final_results' in st.session_state:
-                        final_predictions = st.session_state.final_results['predictions']
-                        final_predictions_plot = final_predictions[:min_len]
-                        ax.plot(dates_test_plot, final_predictions_plot,
-                               label='Predicted (final PSO-LSTM)', linewidth=2, color='orange')
-                    
-                    ax.set_title("Comparison: Actual vs Predicted PSO-LSTM vs Predicted Baseline LSTM")
-                    ax.legend()
-                    ax.set_xlabel("Date")
-                    ax.set_ylabel("Price")
-                    ax.grid(True, alpha=0.3)
-                    
-                    # Format x-axis dengan label bulanan
-                    # Konversi dates_test ke Period bulanan untuk mendapatkan label
-                    month_periods = dates_test_plot.to_period('M').unique()
-                    month_labels = [period.strftime('%b %Y') for period in month_periods]
-                    
-                    # Dapatkan posisi untuk setiap bulan (ambil tanggal pertama di setiap bulan)
-                    month_positions = []
-                    for period in month_periods:
-                        # Cari indeks tanggal pertama bulan ini di dates_test
-                        mask = dates_test_plot.to_period('M') == period
-                        if any(mask):
-                            first_idx = np.where(mask)[0][0]
-                            if first_idx < len(dates_test_plot):
-                                month_positions.append(first_idx)
-                    
-                    # Set x-ticks dengan label bulanan
-                    if len(month_positions) > 0:
-                        # Ambil maksimal 12 label agar tidak terlalu padat
-                        if len(month_positions) > 12:
-                            step = len(month_positions) // 12 + 1
-                            month_positions = month_positions[::step]
-                            month_labels = month_labels[::step]
-                        
-                        ax.set_xticks([dates_test_plot[pos] for pos in month_positions])
-                        ax.set_xticklabels([dates_test_plot[pos].strftime('%b %Y') for pos in month_positions], 
-                                          rotation=45, ha='right')
-                    
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                else:
-                    # Fallback jika tidak ada tanggal
-                    fig, ax = plt.subplots(figsize=(10, 4))
-                    actual = st.session_state.baseline_results['actual']
+                # ✅ PERBAIKAN: PLOT DENGAN LABEL BULANAN (ASUMSI SETIAP 20 DATA = 1 BULAN)
+                fig, ax = plt.subplots(figsize=(10, 4))
+                actual = st.session_state.baseline_results['actual']
+                n_points = len(actual)
+                
+                # Plot garis-garisnya TETAP SAMA
+                ax.plot(actual, label='Actual', linewidth=2, color='blue')
+                ax.plot(st.session_state.baseline_results['predictions'],
+                       label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
 
-                    ax.plot(actual, label='Actual', linewidth=2, color='blue')
-                    ax.plot(st.session_state.baseline_results['predictions'],
-                           label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
+                if 'final_results' in st.session_state:
+                    ax.plot(st.session_state.final_results['predictions'],
+                           label='PSO-LSTM', linewidth=2, color='orange')
 
-                    if 'final_results' in st.session_state:
-                        ax.plot(st.session_state.final_results['predictions'],
-                               label='PSO-LSTM', linewidth=2, color='orange')
-
-                    ax.set_title("Actual vs Predicted Prices")
-                    ax.set_xlabel("Time Index")
-                    ax.set_ylabel("Price")
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                    plt.tight_layout()
-                    st.pyplot(fig)
+                ax.set_title("Comparison: Actual vs Predicted PSO-LSTM vs Predicted Baseline LSTM")
+                ax.legend()
+                ax.set_xlabel("Date")  # Diubah dari "Time Index" ke "Date"
+                ax.set_ylabel("Price")
+                ax.grid(True, alpha=0.3)
+                
+                # ===== PERUBAHAN: BUAT LABEL BULANAN =====
+                # Daftar bulan untuk label (dari Sep 2024 sampai beberapa bulan ke depan)
+                months = ['Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024', 'Jan 2025', 
+                          'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025',
+                          'Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025']
+                
+                # Setiap 20 data adalah 1 bulan
+                interval = 20
+                
+                # Hitung berapa banyak label bulan yang dibutuhkan
+                n_labels = (n_points + interval - 1) // interval
+                
+                # Ambil label bulan yang diperlukan
+                month_labels = months[:n_labels]
+                
+                # Buat posisi ticks (0, 20, 40, ...)
+                tick_positions = [i * interval for i in range(n_labels) if i * interval < n_points]
+                
+                # Tambahkan posisi terakhir jika belum termasuk
+                if n_points - 1 not in tick_positions:
+                    tick_positions.append(n_points - 1)
+                    # Tambahkan label untuk posisi terakhir
+                    if len(month_labels) < len(tick_positions):
+                        month_labels.append(months[len(tick_positions) - 1] if len(tick_positions) - 1 < len(months) else f"Month {len(tick_positions)}")
+                
+                # Set ticks dan labels
+                ax.set_xticks(tick_positions)
+                ax.set_xticklabels(month_labels[:len(tick_positions)], rotation=45, ha='right')
+                
+                plt.tight_layout()
+                st.pyplot(fig)
 
             with tab2:
                 if 'final_results' in st.session_state:
