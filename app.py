@@ -111,7 +111,6 @@ def load_sample_data():
         prices = 4000 + np.cumsum(np.random.randn(len(dates)) * 50)
         df = pd.DataFrame({'Close': prices}, index=dates)
         return df
-
 def main():
     st.title("📈 Stock Price Prediction with LSTM-PSO")
     st.markdown("Prediksi harga saham menggunakan model LSTM yang dioptimasi dengan Particle Swarm Optimization")
@@ -392,12 +391,11 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Predictions", "Training History", "Forecast"])
 
             with tab1:
-                # ✅ PERBAIKAN: PLOT DENGAN LABEL BULANAN (ASUMSI SETIAP 20 DATA = 1 BULAN)
-                fig, ax = plt.subplots(figsize=(10, 4))
+                # ✅ PERBAIKAN: UKURAN PLOT PREDICTIONS LEBIH KECIL
+                fig, ax = plt.subplots(figsize=(10, 4))  # DARI (12,6) JADI (10,4)
                 actual = st.session_state.baseline_results['actual']
-                n_points = len(actual)
-                
-                # Plot garis-garisnya TETAP SAMA
+
+                # GARIS PLOT TETAP SAMA PERSIS - TIDAK ADA PERUBAHAN!
                 ax.plot(actual, label='Actual', linewidth=2, color='blue')
                 ax.plot(st.session_state.baseline_results['predictions'],
                        label='Baseline LSTM', linewidth=2, color='red', linestyle='--')
@@ -408,38 +406,36 @@ def main():
 
                 ax.set_title("Comparison: Actual vs Predicted PSO-LSTM vs Predicted Baseline LSTM")
                 ax.legend()
-                ax.set_xlabel("Date")  # Diubah dari "Time Index" ke "Date"
+                ax.set_xlabel("Date")  # Diubah dari "Time Index" menjadi "Date"
                 ax.set_ylabel("Price")
                 ax.grid(True, alpha=0.3)
                 
-                # ===== PERUBAHAN: BUAT LABEL BULANAN =====
-                # Daftar bulan untuk label (dari Sep 2024 sampai beberapa bulan ke depan)
+                # HANYA MENGUBAH LABEL X-AXIS MENJADI BULANAN
+                # Asumsi: setiap 20 data point = 1 bulan
+                n_points = len(actual)
                 months = ['Sep 2024', 'Oct 2024', 'Nov 2024', 'Dec 2024', 'Jan 2025', 
-                          'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025',
-                          'Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025']
+                          'Feb 2025', 'Mar 2025', 'Apr 2025', 'May 2025', 'Jun 2025']
                 
-                # Setiap 20 data adalah 1 bulan
-                interval = 20
+                # Tentukan posisi ticks (setiap 20 data)
+                tick_positions = [0]
+                month_labels = [months[0]]
                 
-                # Hitung berapa banyak label bulan yang dibutuhkan
-                n_labels = (n_points + interval - 1) // interval
-                
-                # Ambil label bulan yang diperlukan
-                month_labels = months[:n_labels]
-                
-                # Buat posisi ticks (0, 20, 40, ...)
-                tick_positions = [i * interval for i in range(n_labels) if i * interval < n_points]
+                for i in range(1, len(months)):
+                    pos = i * 20
+                    if pos < n_points:
+                        tick_positions.append(pos)
+                        month_labels.append(months[i])
                 
                 # Tambahkan posisi terakhir jika belum termasuk
-                if n_points - 1 not in tick_positions:
+                if n_points - 1 not in tick_positions and n_points > 0:
                     tick_positions.append(n_points - 1)
-                    # Tambahkan label untuk posisi terakhir
-                    if len(month_labels) < len(tick_positions):
-                        month_labels.append(months[len(tick_positions) - 1] if len(tick_positions) - 1 < len(months) else f"Month {len(tick_positions)}")
+                    # Jika sudah melebihi bulan yang tersedia, tambahkan bulan generik
+                    if len(tick_positions) > len(month_labels):
+                        month_labels.append(f"Month {len(tick_positions)}")
                 
                 # Set ticks dan labels
                 ax.set_xticks(tick_positions)
-                ax.set_xticklabels(month_labels[:len(tick_positions)], rotation=45, ha='right')
+                ax.set_xticklabels(month_labels, rotation=45, ha='right')
                 
                 plt.tight_layout()
                 st.pyplot(fig)
