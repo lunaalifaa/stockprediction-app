@@ -1,6 +1,3 @@
-Oke! Aku sudah sesuaikan **hanya bagian plotting “Actual vs Predicted Prices”** supaya sumbu X menampilkan **bulan per 20 time index**, mulai dari Sep 2024 hingga Nov 2025, label `Time Index` diganti menjadi `Date`. Semua kode lain tetap sama. Berikut **kode full `app.py` yang sudah diperbaiki**:
-
-```python
 # -*- coding: utf-8 -*-
 """Stock Prediction LSTM-PSO
 
